@@ -15,30 +15,6 @@
 
 package com.pokegoapi.api.gym;
 
-import POGOProtos.Data.Battle.BattleActionOuterClass.BattleAction;
-import POGOProtos.Data.Battle.BattleActionTypeOuterClass.BattleActionType;
-import POGOProtos.Data.Battle.BattleLogOuterClass.BattleLog;
-import POGOProtos.Data.Battle.BattleParticipantOuterClass.BattleParticipant;
-import POGOProtos.Data.Battle.BattlePokemonInfoOuterClass.BattlePokemonInfo;
-import POGOProtos.Data.Battle.BattleResultsOuterClass.BattleResults;
-import POGOProtos.Data.Battle.BattleStateOuterClass.BattleState;
-import POGOProtos.Data.Battle.BattleTypeOuterClass.BattleType;
-import POGOProtos.Data.PokemonDataOuterClass.PokemonData;
-import POGOProtos.Enums.PokemonMoveOuterClass.PokemonMove;
-import POGOProtos.Networking.Requests.Messages.AttackGymMessageOuterClass.AttackGymMessage;
-import POGOProtos.Networking.Requests.Messages.StartGymBattleMessageOuterClass.StartGymBattleMessage;
-import POGOProtos.Networking.Requests.RequestTypeOuterClass.RequestType;
-import POGOProtos.Networking.Responses.AttackGymResponseOuterClass.AttackGymResponse;
-import POGOProtos.Networking.Responses.StartGymBattleResponseOuterClass.StartGymBattleResponse;
-import POGOProtos.Settings.Master.MoveSettingsOuterClass;
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.pokegoapi.api.PokemonGo;
-import com.pokegoapi.api.pokemon.Pokemon;
-import com.pokegoapi.exceptions.request.RequestFailedException;
-import com.pokegoapi.main.ServerRequest;
-import lombok.Getter;
-import lombok.Setter;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -49,6 +25,31 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.PriorityBlockingQueue;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.pokegoapi.api.PokemonGo;
+import com.pokegoapi.api.pokemon.Pokemon;
+import com.pokegoapi.exceptions.request.RequestFailedException;
+import com.pokegoapi.main.ServerRequest;
+
+import POGOProtos.Data.PokemonDataOuterClass.PokemonData;
+import POGOProtos.Data.Battle.BattleActionOuterClass.BattleAction;
+import POGOProtos.Data.Battle.BattleActionTypeOuterClass.BattleActionType;
+import POGOProtos.Data.Battle.BattleLogOuterClass.BattleLog;
+import POGOProtos.Data.Battle.BattleParticipantOuterClass.BattleParticipant;
+import POGOProtos.Data.Battle.BattlePokemonInfoOuterClass.BattlePokemonInfo;
+import POGOProtos.Data.Battle.BattleResultsOuterClass.BattleResults;
+import POGOProtos.Data.Battle.BattleStateOuterClass.BattleState;
+import POGOProtos.Data.Battle.BattleTypeOuterClass.BattleType;
+import POGOProtos.Enums.PokemonMoveOuterClass.PokemonMove;
+import POGOProtos.Networking.Requests.RequestTypeOuterClass.RequestType;
+import POGOProtos.Networking.Requests.Messages.GymBattleAttackMessageOuterClass.GymBattleAttackMessage;
+import POGOProtos.Networking.Requests.Messages.GymStartSessionMessageOuterClass.GymStartSessionMessage;
+import POGOProtos.Networking.Responses.GymBattleAttackResponseOuterClass.GymBattleAttackResponse;
+import POGOProtos.Networking.Responses.GymStartSessionResponseOuterClass.GymStartSessionResponse;
+import POGOProtos.Settings.Master.MoveSettingsOuterClass;
+import lombok.Getter;
+import lombok.Setter;
 
 public class Battle {
 	private final PokemonGo api;
@@ -199,13 +200,13 @@ public class Battle {
 		}
 
 		if (attackers.size() > 0 && defenderIndex < defenderCount) {
-			StartGymBattleMessage.Builder builder = StartGymBattleMessage.newBuilder()
-					.setPlayerLatitude(api.getLatitude())
-					.setPlayerLongitude(api.getLongitude())
+			GymStartSessionMessage.Builder builder = GymStartSessionMessage.newBuilder()
+					.setPlayerLatDegrees(api.getLatitude())
+					.setPlayerLngDegrees(api.getLongitude())
 					.setGymId(gym.getId())
 					.setDefendingPokemonId(gym.getDefendingPokemon().get(defenderIndex).getPokemon().getId());
 			for (Pokemon pokemon : attackers) {
-				builder.addAttackingPokemonIds(pokemon.getId());
+				builder.addAttackingPokemonId(pokemon.getId());
 				if (pokemon.getStamina() < pokemon.getMaxStamina()) {
 					throw new IllegalArgumentException("Pokemon must have full stamina to battle in a gym!");
 				} else {
@@ -216,21 +217,21 @@ public class Battle {
 				}
 			}
 			try {
-				StartGymBattleMessage message = builder.build();
-				ServerRequest request = new ServerRequest(RequestType.START_GYM_BATTLE, message);
+				GymStartSessionMessage message = builder.build();
+				ServerRequest request = new ServerRequest(RequestType.GYM_START_SESSION, message);
 
 				api.getRequestHandler().sendServerRequests(request, true);
-				StartGymBattleResponse response = StartGymBattleResponse.parseFrom(request.getData());
+				GymStartSessionResponse response = GymStartSessionResponse.parseFrom(request.getData());
 
-				if (response.getResult() == StartGymBattleResponse.Result.SUCCESS) {
-					battleId = response.getBattleId();
-					attacker = response.getAttacker();
-					defender = response.getDefender();
+				if (response.getResult() == GymStartSessionResponse.Result.SUCCESS) {
+					battleId = response.getBattle().getBattleId();
+					attacker = response.getBattle().getAttacker();
+					defender = response.getBattle().getDefender();
 
 					activeDefender = new BattlePokemon(defender.getActivePokemon());
 					activeAttacker = new BattlePokemon(attacker.getActivePokemon());
 
-					updateLog(handler, response.getBattleLog());
+					updateLog(handler, response.getBattle().getBattleLog());
 				}
 
 				sendActions(handler);
@@ -283,7 +284,7 @@ public class Battle {
 		}
 		activeActions.removeAll(completedActions);
 		boolean nextDefender = false;
-		if (active && !queuedActions.isEmpty()) {
+		if (active) { //  && !queuedActions.isEmpty()) {
 			try {
 				nextDefender = sendActions(handler);
 			} catch (Exception e) {
@@ -356,13 +357,6 @@ public class Battle {
 				default:
 					break;
 			}
-			if (!active) {
-				try {
-					api.getInventories().updateInventories(true);
-				} catch (Exception e) {
-					handler.onException(api, this, e);
-				}
-			}
 			battleState = state;
 		}
 		for (BattleAction action : log.getBattleActionsList()) {
@@ -373,7 +367,8 @@ public class Battle {
 			}
 		}
 		lastServerTime = log.getServerMs();
-		return battleState != BattleState.ACTIVE && battleState != BattleState.STATE_UNSET
+		return battleState != BattleState.ACTIVE //
+				&& battleState != BattleState.STATE_UNSET //
 				&& battleState != BattleState.TIMED_OUT;
 	}
 
@@ -541,11 +536,11 @@ public class Battle {
 	 */
 	private boolean sendActions(BattleHandler handler)
 			throws RequestFailedException {
-		AttackGymMessage.Builder builder = AttackGymMessage.newBuilder()
+		GymBattleAttackMessage.Builder builder = GymBattleAttackMessage.newBuilder()
 				.setGymId(gym.getId())
 				.setBattleId(battleId)
-				.setPlayerLatitude(api.getLatitude())
-				.setPlayerLongitude(api.getLongitude());
+				.setPlayerLatDegrees(api.getLatitude())
+				.setPlayerLngDegrees(api.getLongitude());
 		while (queuedActions.size() > 0) {
 			ClientAction action = queuedActions.element();
 			if (action.getEndTime() < lastSendTime) {
@@ -567,7 +562,7 @@ public class Battle {
 					actionBuilder.setDamageWindowsStartTimestampMs(damageWindowsStart);
 					actionBuilder.setDamageWindowsEndTimestampMs(damageWindowEnd);
 				}
-				builder.addAttackActions(actionBuilder.build());
+				builder.addAttackerActions(actionBuilder.build());
 			} else {
 				break;
 			}
@@ -575,21 +570,21 @@ public class Battle {
 		if (lastRetrievedAction != null && sentActions) {
 			builder.setLastRetrievedAction(lastRetrievedAction);
 		}
-		if (builder.getAttackActionsCount() > 0) {
-			AttackGymMessage message = builder.build();
-			ServerRequest request = new ServerRequest(RequestType.ATTACK_GYM, message);
+		// if (builder.getAttackerActionsCount() > 0) {
+			GymBattleAttackMessage message = builder.build();
+			ServerRequest request = new ServerRequest(RequestType.GYM_BATTLE_ATTACK, message);
 			api.getRequestHandler().sendServerRequests(request, true);
 			boolean nextDefender;
 			try {
-				AttackGymResponse response = AttackGymResponse.parseFrom(request.getData());
+				GymBattleAttackResponse response = GymBattleAttackResponse.parseFrom(request.getData());
 				nextDefender = handleAttackResponse(handler, response);
 			} catch (InvalidProtocolBufferException e) {
 				throw new RequestFailedException(e);
 			}
 			sentActions = true;
 			return nextDefender;
-		}
-		return false;
+		// }
+		// return false;
 	}
 
 	/**
@@ -599,13 +594,13 @@ public class Battle {
 	 * @param response the response to handle
 	 * @return if this battle should move on to the next defender
 	 */
-	private boolean handleAttackResponse(BattleHandler handler, AttackGymResponse response) {
-		if (response.getResult() == AttackGymResponse.Result.SUCCESS) {
+	private boolean handleAttackResponse(BattleHandler handler, GymBattleAttackResponse response) {
+		if (response.getResult() == GymBattleAttackResponse.Result.SUCCESS) {
 			final BattlePokemon lastDefender = activeDefender;
 			final BattlePokemon lastAttacker = activeAttacker;
 
-			activeAttacker = new BattlePokemon(response.getActiveAttacker());
-			activeDefender = new BattlePokemon(response.getActiveDefender());
+			activeAttacker = new BattlePokemon(response.getBattleUpdate().getActiveAttacker());
+			activeDefender = new BattlePokemon(response.getBattleUpdate().getActiveDefender());
 
 			if (lastAttacker == null || lastAttacker.getPokemon().getId() != activeAttacker.getPokemon().getId()) {
 				handler.onAttackerSwap(api, this, activeAttacker);
@@ -624,9 +619,9 @@ public class Battle {
 			handler.onAttackerHealthUpdate(api, this, lastAttackerHealth, attackerHealth, attackerMaxHealth);
 			handler.onDefenderHealthUpdate(api, this, lastDefenderHealth, defenderHealth, defenderMaxHealth);
 
-			BattleLog log = response.getBattleLog();
+			BattleLog log = response.getBattleUpdate().getBattleLog();
 			return updateLog(handler, log);
-		} else if (response.getResult() == AttackGymResponse.Result.ERROR_INVALID_ATTACK_ACTIONS) {
+		} else if (response.getResult() == GymBattleAttackResponse.Result.ERROR_INVALID_ATTACK_ACTIONS) {
 			handler.onInvalidActions(api, this);
 		}
 		return false;
@@ -899,7 +894,7 @@ public class Battle {
 		 * @param battle the current battle
 		 * @param result the result from the start message
 		 */
-		void onStart(PokemonGo api, Battle battle, StartGymBattleResponse.Result result);
+		void onStart(PokemonGo api, Battle battle, GymStartSessionResponse.Result result);
 
 		/**
 		 * Called when this battle end, and you won
