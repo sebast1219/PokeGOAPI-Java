@@ -224,7 +224,9 @@ public class Battle {
 				GymStartSessionResponse response = GymStartSessionResponse.parseFrom(request.getData());
 
 				if (response.getResult() == GymStartSessionResponse.Result.SUCCESS) {
+					active = true;
 					battleId = response.getBattle().getBattleId();
+					System.err.println("setting battleId: " + battleId);
 					attacker = response.getBattle().getAttacker();
 					defender = response.getBattle().getDefender();
 
@@ -252,6 +254,7 @@ public class Battle {
 	 * @param handler to handle this battle
 	 */
 	private void updateBattle(BattleHandler handler) {
+		System.err.println("update battle");
 		long time = api.currentTimeMillis();
 		while (serverActionQueue.size() > 0) {
 			ServerAction action = serverActionQueue.element();
@@ -293,6 +296,7 @@ public class Battle {
 			lastSendTime = time;
 		}
 		if (nextDefender) {
+			System.err.println("on next defender --> wait");
 			defenderIndex++;
 			try {
 				beginDefenderBattle(handler);
@@ -311,6 +315,7 @@ public class Battle {
 	 * @return if this battle should move on to the next defender
 	 */
 	private boolean updateLog(BattleHandler handler, BattleLog log) {
+		System.err.println("update log");
 		serverTimeOffset = log.getServerMs() - api.currentTimeMillis();
 		battleType = log.getBattleType();
 		startTime = log.getBattleStartTimestampMs();
@@ -336,8 +341,10 @@ public class Battle {
 			gymPointsDelta += results.getGymPointsDelta();
 		}
 		BattleState state = log.getState();
-		active = defenderIndex < defenderCount && !(state == BattleState.TIMED_OUT || state == BattleState
-				.STATE_UNSET);
+//		active = defenderIndex < defenderCount && !(state == BattleState.TIMED_OUT || state == BattleState
+//				.STATE_UNSET);
+		active = state == BattleState.ACTIVE // 
+				|| (state == BattleState.VICTORY && defenderIndex < defenderCount);
 		if (state != battleState) {
 			switch (state) {
 				case TIMED_OUT:
@@ -362,6 +369,7 @@ public class Battle {
 		for (BattleAction action : log.getBattleActionsList()) {
 			ServerAction serverAction = new ServerAction(action);
 			if (!handledActions.contains(serverAction)) {
+				System.err.println(serverAction);
 				serverActionQueue.add(serverAction);
 				handledActions.add(serverAction);
 			}
@@ -443,6 +451,7 @@ public class Battle {
 		BattlePokemon attacked = getActivePokemon(action.getTargetIndex(), true);
 		BattlePokemon attacker = getActivePokemon(action.getAttackerIndex(), false);
 		if (action.getAttackerIndex() == 0) {
+			attacked = activeDefender;
 			attacker = activeAttacker;
 		}
 
@@ -460,9 +469,10 @@ public class Battle {
 	 * @param action the attack action
 	 */
 	private void handleSpecialAttack(BattleHandler handler, ServerAction action) {
-		BattlePokemon attacked = getActivePokemon(action.getTargetIndex(), false);
-		BattlePokemon attacker = getActivePokemon(action.getAttackerIndex(), true);
+		BattlePokemon attacked = getActivePokemon(action.getTargetIndex(), true);
+		BattlePokemon attacker = getActivePokemon(action.getAttackerIndex(), false);
 		if (action.getAttackerIndex() == 0) {
+			attacked = activeDefender;
 			attacker = activeAttacker;
 		}
 
@@ -573,10 +583,12 @@ public class Battle {
 		// if (builder.getAttackerActionsCount() > 0) {
 			GymBattleAttackMessage message = builder.build();
 			ServerRequest request = new ServerRequest(RequestType.GYM_BATTLE_ATTACK, message);
+			System.err.println("sending actions, nb:" + message.getAttackerActionsCount());
 			api.getRequestHandler().sendServerRequests(request, true);
 			boolean nextDefender;
 			try {
 				GymBattleAttackResponse response = GymBattleAttackResponse.parseFrom(request.getData());
+				// System.err.println(response);
 				nextDefender = handleAttackResponse(handler, response);
 			} catch (InvalidProtocolBufferException e) {
 				throw new RequestFailedException(e);
@@ -780,6 +792,8 @@ public class Battle {
 		@Getter
 		private final int targetIndex;
 		@Getter
+		private final long activePokemonId;
+		@Getter
 		private final long damageWindowStart;
 		@Getter
 		private final long damageWindowEnd;
@@ -787,7 +801,9 @@ public class Battle {
 		private final BattleParticipant joined;
 		@Getter
 		private final BattleParticipant left;
-
+		
+		private final BattleAction raw;
+		
 		ServerAction(BattleAction action) {
 			type = action.getType();
 			start = toClientTime(action.getActionStartMs());
@@ -796,25 +812,36 @@ public class Battle {
 			energyDelta = action.getEnergyDelta();
 			attackerIndex = action.getAttackerIndex();
 			targetIndex = action.getTargetIndex();
+			activePokemonId = action.getActivePokemonId();
 			damageWindowStart = toClientTime(action.getDamageWindowsStartTimestampMs());
 			damageWindowEnd = toClientTime(action.getDamageWindowsEndTimestampMs());
 			joined = action.getPlayerJoined();
 			left = action.getPlayerLeft();
+			
+			this.raw = action;
 		}
 
 		@Override
-		public int hashCode() {
-			return (int) start;
+		public int hashCode() {  // TODO a ameliorer
+			// return (int) start;
+			return (int) raw.getActionStartMs();
 		}
 
 		@Override
-		public boolean equals(Object obj) {
+		public boolean equals(Object obj) {  // TODO a ameliorer
 			if (obj instanceof ServerAction) {
 				ServerAction action = (ServerAction) obj;
-				return action.getType() == type && action.getStart() == start && action.getDuration() == duration
-						&& action.getAttackerIndex() == attackerIndex && action.getTargetIndex() == targetIndex;
+//				return action.getType() == type && action.getStart() == start && action.getDuration() == duration
+//						&& action.getAttackerIndex() == attackerIndex && action.getTargetIndex() == targetIndex;
+				return action.raw.getActionStartMs() == this.raw.getActionStartMs();
 			}
 			return false;
+		}
+		
+		@Override
+		public String toString() {
+			return String.format("%s - start %d - attacker %d - target %d", //
+					type, start, attackerIndex, targetIndex);
 		}
 	}
 
