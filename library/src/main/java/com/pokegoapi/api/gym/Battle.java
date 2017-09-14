@@ -17,10 +17,8 @@ package com.pokegoapi.api.gym;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -87,12 +85,6 @@ public class Battle {
 	private Set<ServerAction> activeActions = new HashSet<>();
 	private Set<ServerAction> damagingActions = new HashSet<>();
 
-	@Getter
-	private Map<String, BattleParticipant> participants = new HashMap<>();
-	private Map<Integer, BattleParticipant> participantIndices = new HashMap<>();
-
-	private Map<BattleParticipant, BattlePokemon> activePokemon = new HashMap<>();
-
 	private Queue<ClientAction> queuedActions = new LinkedBlockingDeque<>();
 
 	@Getter
@@ -140,10 +132,6 @@ public class Battle {
 	 */
 	public void start(final BattleHandler handler) throws RequestFailedException {
 		battleId = null;
-		participantIndices.clear();
-		participants.clear();
-		activePokemon.clear();
-		serverActionQueue.clear();
 		activeActions.clear();
 		serverTimeOffset = 0;
 		active = false;
@@ -226,7 +214,6 @@ public class Battle {
 				if (response.getResult() == GymStartSessionResponse.Result.SUCCESS) {
 					active = true;
 					battleId = response.getBattle().getBattleId();
-					System.err.println("setting battleId: " + battleId);
 					attacker = response.getBattle().getAttacker();
 					defender = response.getBattle().getDefender();
 
@@ -295,7 +282,7 @@ public class Battle {
 			}
 			lastSendTime = time;
 		}
-		if (nextDefender) {
+		if (nextDefender && active) {
 			System.err.println("on next defender --> wait");
 			defenderIndex++;
 			try {
@@ -344,7 +331,7 @@ public class Battle {
 //		active = defenderIndex < defenderCount && !(state == BattleState.TIMED_OUT || state == BattleState
 //				.STATE_UNSET);
 		active = state == BattleState.ACTIVE // 
-				|| (state == BattleState.VICTORY && defenderIndex < defenderCount);
+				|| (state == BattleState.VICTORY && defenderIndex < defenderCount - 1);
 		if (state != battleState) {
 			switch (state) {
 				case TIMED_OUT:
@@ -419,10 +406,6 @@ public class Battle {
 	 */
 	private void onPlayerJoin(BattleHandler handler, ServerAction action) {
 		BattleParticipant joined = action.getJoined();
-		String name = joined.getTrainerPublicProfile().getName();
-		participants.put(name, joined);
-		participantIndices.put(action.getTargetIndex(), joined);
-		activePokemon.put(joined, new BattlePokemon(joined.getActivePokemon()));
 		handler.onPlayerJoin(api, this, joined, action);
 	}
 
@@ -434,10 +417,6 @@ public class Battle {
 	 */
 	private void onPlayerQuit(BattleHandler handler, ServerAction action) {
 		BattleParticipant left = action.getLeft();
-		String name = left.getTrainerPublicProfile().getName();
-		BattleParticipant remove = participants.remove(name);
-		participantIndices.remove(action.getTargetIndex());
-		activePokemon.remove(remove);
 		handler.onPlayerLeave(api, this, left, action);
 	}
 
@@ -448,13 +427,18 @@ public class Battle {
 	 * @param action the attack action
 	 */
 	private void handleAttack(BattleHandler handler, ServerAction action) {
-		BattlePokemon attacked = getActivePokemon(action.getTargetIndex(), true);
-		BattlePokemon attacker = getActivePokemon(action.getAttackerIndex(), false);
-		if (action.getAttackerIndex() == 0) {
+		BattlePokemon attacked = null;
+		BattlePokemon attacker = null;
+		if (action.getAttackerIndex() == 0 && action.getTargetIndex() == -1) {
 			attacked = activeDefender;
 			attacker = activeAttacker;
+		} else if (action.getAttackerIndex() == -1 && action.getTargetIndex() == -1){
+			attacked = activeAttacker;
+			attacker = activeDefender;
+		} else {
+			return;
 		}
-
+		
 		long damageWindowStart = action.getDamageWindowStart();
 		long damageWindowEnd = action.getDamageWindowEnd();
 		int duration = action.getDuration();
@@ -469,11 +453,16 @@ public class Battle {
 	 * @param action the attack action
 	 */
 	private void handleSpecialAttack(BattleHandler handler, ServerAction action) {
-		BattlePokemon attacked = getActivePokemon(action.getTargetIndex(), true);
-		BattlePokemon attacker = getActivePokemon(action.getAttackerIndex(), false);
-		if (action.getAttackerIndex() == 0) {
+		BattlePokemon attacked = null;
+		BattlePokemon attacker = null;
+		if (action.getAttackerIndex() == 0 && action.getTargetIndex() == -1) {
 			attacked = activeDefender;
 			attacker = activeAttacker;
+		} else if (action.getAttackerIndex() == -1 && action.getTargetIndex() == -1){
+			attacked = activeAttacker;
+			attacker = activeDefender;
+		} else {
+			return;
 		}
 
 		long damageWindowStart = action.getDamageWindowStart();
@@ -490,9 +479,13 @@ public class Battle {
 	 * @param action the faint action
 	 */
 	private void handleFaint(BattleHandler handler, ServerAction action) {
-		BattlePokemon pokemon = getActivePokemon(action.getAttackerIndex(), true);
+		BattlePokemon pokemon = null;
 		if (action.getAttackerIndex() == 0) {
 			pokemon = activeAttacker;
+		} else if (action.getAttackerIndex() == 0) {
+			pokemon = activeAttacker;
+		} else {
+			return;
 		}
 
 		int duration = action.getDuration();
@@ -508,13 +501,11 @@ public class Battle {
 	 * @param action the dodge action
 	 */
 	private void handleDodge(BattleHandler handler, ServerAction action) {
-		BattlePokemon pokemon = getActivePokemon(action.getAttackerIndex(), true);
 		if (action.getAttackerIndex() == 0) {
-			pokemon = activeAttacker;
+			BattlePokemon pokemon = activeAttacker;
+			int duration = action.getDuration();
+			handler.onDodge(api, this, pokemon, duration, action);
 		}
-
-		int duration = action.getDuration();
-		handler.onDodge(api, this, pokemon, duration, action);
 	}
 
 	/**
@@ -640,59 +631,6 @@ public class Battle {
 	}
 
 	/**
-	 * Gets the currently active pokemon for the given BattleParticipant
-	 *
-	 * @param participant the participant
-	 * @return the active pokemon
-	 */
-	public BattlePokemon getActivePokemon(BattleParticipant participant) {
-		return activePokemon.get(participant);
-	}
-
-	/**
-	 * Gets the currently active pokemon for the given participant name
-	 *
-	 * @param participantName the participant's name
-	 * @return the active pokemon
-	 */
-	public BattlePokemon getActivePokemon(String participantName) {
-		BattleParticipant participant = participants.get(participantName);
-		if (participant != null) {
-			return activePokemon.get(participant);
-		}
-		return null;
-	}
-
-	/**
-	 * Gets the currently active pokemon for the given participant index
-	 *
-	 * @param index the participant index
-	 * @param attacker if the index is that of the attacker
-	 * @return the active pokemon
-	 */
-	public BattlePokemon getActivePokemon(int index, boolean attacker) {
-		if (attacker || index != -1) {
-			BattleParticipant participant = getParticipant(index);
-			if (participant != null) {
-				return activePokemon.get(participant);
-			}
-		} else {
-			return activeDefender;
-		}
-		return null;
-	}
-
-	/**
-	 * Gets the participant for the given index
-	 *
-	 * @param index the index to get a participant at
-	 * @return the participant for
-	 */
-	public BattleParticipant getParticipant(int index) {
-		return participantIndices.get(index);
-	}
-
-	/**
 	 * Performs an action with the given duration
 	 *
 	 * @param type the action to perform
@@ -711,6 +649,9 @@ public class Battle {
 	 * @return the duration of this attack
 	 */
 	public int attack() {
+		if(!active) {
+			return -1;
+		}
 		PokemonData pokemon = activeAttacker.getPokemon();
 		PokemonMove move = pokemon.getMove1();
 		MoveSettingsOuterClass.MoveSettings moveSettings = api.getItemTemplates().getMoveSettings(move);
@@ -728,6 +669,9 @@ public class Battle {
 	 * @return the duration of this attack
 	 */
 	public int attackSpecial() {
+		if(!active) {
+			return -1;
+		}
 		PokemonData pokemon = activeAttacker.getPokemon();
 		PokemonMove move = pokemon.getMove2();
 		MoveSettingsOuterClass.MoveSettings moveSettings = api.getItemTemplates().getMoveSettings(move);
@@ -749,6 +693,9 @@ public class Battle {
 	 * @return the duration of this action
 	 */
 	public int dodge() {
+		if(!active) {
+			return -1;
+		}
 		int duration = api.getItemTemplates().getBattleSettings().getDodgeDurationMs();
 		performAction(BattleActionType.ACTION_DODGE, duration);
 		return duration;
