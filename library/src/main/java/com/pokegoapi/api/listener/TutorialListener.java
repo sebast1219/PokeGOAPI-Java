@@ -4,6 +4,8 @@ import com.pokegoapi.api.PokemonGo;
 import com.pokegoapi.api.player.PlayerAvatar;
 import com.pokegoapi.api.pokemon.StarterPokemon;
 
+import POGOProtos.Enums.TeamColorOuterClass.TeamColor;
+
 /**
  * Listener for all tutorial and account setup events.
  */
@@ -32,4 +34,12 @@ public interface TutorialListener extends Listener {
 	 * @return the selected avatar; null to pick random
 	 */
 	PlayerAvatar selectAvatar(PokemonGo api);
+	
+	/**
+	 * Called when the user is required to select a team.
+	 *
+	 * @param api the current api
+	 * @return the selected avatar; null to pick random
+	 */
+	TeamColor chooseTeamColor(PokemonGo api);
 }

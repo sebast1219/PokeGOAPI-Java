@@ -20,6 +20,7 @@ import POGOProtos.Data.Player.PlayerStatsOuterClass;
 import POGOProtos.Data.PlayerBadgeOuterClass.PlayerBadge;
 import POGOProtos.Data.PlayerDataOuterClass.PlayerData;
 import POGOProtos.Enums.BadgeTypeOuterClass.BadgeType;
+import POGOProtos.Enums.TeamColorOuterClass.TeamColor;
 import POGOProtos.Enums.TutorialStateOuterClass;
 import POGOProtos.Networking.Requests.Messages.CheckAwardedBadgesMessageOuterClass.CheckAwardedBadgesMessage;
 import POGOProtos.Networking.Requests.Messages.ClaimCodenameMessageOuterClass.ClaimCodenameMessage;
@@ -30,6 +31,7 @@ import POGOProtos.Networking.Requests.Messages.LevelUpRewardsMessageOuterClass.L
 import POGOProtos.Networking.Requests.Messages.MarkTutorialCompleteMessageOuterClass.MarkTutorialCompleteMessage;
 import POGOProtos.Networking.Requests.Messages.SetAvatarMessageOuterClass.SetAvatarMessage;
 import POGOProtos.Networking.Requests.Messages.SetBuddyPokemonMessageOuterClass;
+import POGOProtos.Networking.Requests.Messages.SetPlayerTeamMessageOuterClass.SetPlayerTeamMessage;
 import POGOProtos.Networking.Requests.RequestTypeOuterClass.RequestType;
 import POGOProtos.Networking.Responses.CheckAwardedBadgesResponseOuterClass.CheckAwardedBadgesResponse;
 import POGOProtos.Networking.Responses.ClaimCodenameResponseOuterClass.ClaimCodenameResponse;
@@ -39,6 +41,8 @@ import POGOProtos.Networking.Responses.LevelUpRewardsResponseOuterClass.LevelUpR
 import POGOProtos.Networking.Responses.MarkTutorialCompleteResponseOuterClass.MarkTutorialCompleteResponse;
 import POGOProtos.Networking.Responses.SetAvatarResponseOuterClass.SetAvatarResponse;
 import POGOProtos.Networking.Responses.SetBuddyPokemonResponseOuterClass.SetBuddyPokemonResponse;
+import POGOProtos.Networking.Responses.SetPlayerTeamResponseOuterClass.SetPlayerTeamResponse;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.pokegoapi.api.PokemonGo;
 import com.pokegoapi.api.inventory.ItemBag;
@@ -611,6 +615,50 @@ public class PlayerProfile {
 	}
 
 	/**
+	 * Choose the player team color
+	 * @throws RequestFailedException if an exception occurred while sending requests
+	 */
+	public void chooseTeamColor() 
+			throws RequestFailedException {
+		
+		TeamColor color = null;
+		List<TutorialListener> listeners = api.getListeners(TutorialListener.class);
+		for (TutorialListener listener : listeners) {
+			TeamColor listenerColor = listener.chooseTeamColor(api);
+			if (listenerColor != null) {
+				color = listenerColor;
+				break;
+			}
+		}
+		
+		if(color == null) {
+			return;
+		}
+		
+		SetPlayerTeamMessage setPlayerTeamMessage = SetPlayerTeamMessage.newBuilder() //
+				.setTeam(color) //
+				.build();
+		ServerRequest request = new ServerRequest(RequestType.SET_PLAYER_TEAM, setPlayerTeamMessage);
+		api.getRequestHandler().sendServerRequests(request, true);
+
+		try {
+			SetPlayerTeamResponse setPlayerTeamResponse = SetPlayerTeamResponse.parseFrom(request.getData());
+			if (setPlayerTeamResponse.getStatus() != SetPlayerTeamResponse.Status.SUCCESS) {
+				Log.w(TAG, "Error choosing player team color. Request failed");
+			} else {
+				Log.d(TAG, "Player team color choosen");
+				
+				// force update profile
+				updateProfile();	
+			}
+		} catch (InvalidProtocolBufferException e) {
+			Log.w(TAG, "Error choosing player team color. ", e);
+		}
+		
+		
+	}
+	
+	/**
 	 * Completes the visit gym tutorial
 	 * @throws RequestFailedException if an exception occurred while sending this request
 	 */
@@ -656,4 +704,6 @@ public class PlayerProfile {
 		}
 		return sb.toString();
 	}
+
+	
 }
