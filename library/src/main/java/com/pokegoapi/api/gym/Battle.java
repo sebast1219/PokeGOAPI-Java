@@ -189,13 +189,10 @@ public class Battle {
 					.setDefendingPokemonId(gym.getDefendingPokemon().get(defenderIndex).getPokemon().getId());
 			for (Pokemon pokemon : attackers) {
 				builder.addAttackingPokemonId(pokemon.getId());
-				if (pokemon.getStamina() < pokemon.getMaxStamina()) {
-					throw new IllegalArgumentException("Pokemon must have full stamina to battle in a gym!");
-				} else {
-					String deployedFortId = pokemon.getDeployedFortId();
-					if (pokemon.getFromFort() && deployedFortId != null && deployedFortId.length() > 0) {
-						throw new IllegalArgumentException("Cannot deploy Pokemon that is already in a gym!");
-					}
+
+				String deployedFortId = pokemon.getDeployedFortId();
+				if (pokemon.getFromFort() && deployedFortId != null && deployedFortId.length() > 0) {
+					throw new IllegalArgumentException("Cannot deploy Pokemon that is already in a gym!");
 				}
 			}
 			try {
@@ -485,12 +482,17 @@ public class Battle {
 		BattlePokemon pokemon = null;
 		if (action.getAttackerIndex() == 0) {
 			pokemon = activeAttacker;
-		} else if (action.getAttackerIndex() == 0) {
-			pokemon = activeAttacker;
 		} else {
 			return;
 		}
-
+		
+		if (pokemon.getPokemon().getId() != 0) {
+			Pokemon pkm = api.getInventories().getPokebank().getPokemonById(pokemon.getPokemon().getId());
+			if (pkm != null) {
+				pkm.setStamina(0);
+			}
+		}
+		
 		int duration = action.getDuration();
 		handler.onFaint(api, this, pokemon, duration, action);
 
@@ -625,11 +627,12 @@ public class Battle {
 			activeDefender = new BattlePokemon(response.getBattleUpdate().getActiveDefender());
 
 			if (lastAttacker == null || lastAttacker.getPokemon().getId() != activeAttacker.getPokemon().getId()) {
-				handler.onAttackerSwap(api, this, activeAttacker);
+				
+				handler.onAttackerSwap(api, this, lastAttacker, activeAttacker);
 			}
 
 			if (lastDefender == null || lastDefender.getPokemon().getId() != activeDefender.getPokemon().getId()) {
-				handler.onDefenderSwap(api, this, activeDefender);
+				handler.onDefenderSwap(api, this, lastDefender, activeDefender);
 			}
 
 			int lastAttackerHealth = lastAttacker.getHealth();
@@ -638,6 +641,14 @@ public class Battle {
 			int defenderHealth = activeDefender.getHealth();
 			int attackerMaxHealth = activeAttacker.getMaxHealth();
 			int defenderMaxHealth = activeDefender.getMaxHealth();
+
+			if (activeAttacker.getPokemon().getId() != 0) {
+				Pokemon pkm = api.getInventories().getPokebank().getPokemonById(activeAttacker.getPokemon().getId());
+				if (pkm != null) {
+					pkm.setStamina(attackerHealth);
+				}
+			}
+
 			handler.onAttackerHealthUpdate(api, this, lastAttackerHealth, attackerHealth, attackerMaxHealth);
 			handler.onDefenderHealthUpdate(api, this, lastDefenderHealth, defenderHealth, defenderMaxHealth);
 
@@ -1114,7 +1125,7 @@ public class Battle {
 		 * @param newAttacker
 		 *            the new attacker pokemon
 		 */
-		void onAttackerSwap(PokemonGo api, Battle battle, BattlePokemon newAttacker);
+		void onAttackerSwap(PokemonGo api, Battle battle, BattlePokemon oldAttacker, BattlePokemon newAttacker);
 
 		/**
 		 * Called when the defender Pokemon changes
@@ -1126,7 +1137,7 @@ public class Battle {
 		 * @param newDefender
 		 *            the new defender pokemon
 		 */
-		void onDefenderSwap(PokemonGo api, Battle battle, BattlePokemon newDefender);
+		void onDefenderSwap(PokemonGo api, Battle battle, BattlePokemon newAttacker, BattlePokemon newDefender);
 
 		/**
 		 * Called when the given Pokemon faints.
