@@ -19,6 +19,7 @@ import POGOProtos.Data.Gym.GymDefenderOuterClass.GymDefender;
 import POGOProtos.Data.Gym.GymStateOuterClass.GymState;
 import POGOProtos.Enums.PokemonIdOuterClass;
 import POGOProtos.Enums.TeamColorOuterClass;
+import POGOProtos.Enums.TeamColorOuterClass.TeamColor;
 import POGOProtos.Enums.TutorialStateOuterClass.TutorialState;
 import POGOProtos.Map.Fort.FortDataOuterClass.FortData;
 import POGOProtos.Map.Pokemon.MotivatedPokemonOuterClass.MotivatedPokemon;
@@ -111,6 +112,10 @@ public class Gym extends Fort implements MapPoint {
 		List<TutorialState> tutorialStates = getApi().getPlayerProfile().getTutorialState().getTutorialStates();
 		if (!tutorialStates.contains(TutorialState.GYM_TUTORIAL)) {
 			getApi().getPlayerProfile().visitGymComplete();
+		}
+		
+		if(getApi().getPlayerProfile().getPlayerData().getTeam() == TeamColor.NEUTRAL) {
+			getApi().getPlayerProfile().chooseTeamColor();
 		}
 
 		if (details == null) {
