@@ -60,6 +60,8 @@ public class Battle {
 	@Getter
 	private String battleId;
 	@Getter
+	private int attackerIdx;
+	@Getter
 	private BattleParticipant attacker;
 	@Getter
 	private BattleParticipant defender;
@@ -398,6 +400,9 @@ public class Battle {
 	 */
 	private void onPlayerJoin(BattleHandler handler, ServerAction action) {
 		BattleParticipant joined = action.getJoined();
+		if(joined.getTrainerPublicProfile().getName().equals(api.getPlayerProfile().getPlayerData().getUsername())) {
+			attackerIdx = action.getAttackerIndex();
+		}
 		handler.onPlayerJoin(api, this, joined, action);
 	}
 
@@ -558,8 +563,12 @@ public class Battle {
 					activePokemon = action.getPokemon().getId();
 				}
 				long start = action.getStartTime();
-				BattleAction.Builder actionBuilder = BattleAction.newBuilder().setActionStartMs(start)
-						.setDurationMs(action.getDuration()).setTargetIndex(-1).setActivePokemonId(activePokemon)
+				BattleAction.Builder actionBuilder = BattleAction.newBuilder() //
+						.setActionStartMs(start) //
+						.setDurationMs(action.getDuration()) //
+						.setAttackerIndex(attackerIdx) //
+						.setTargetIndex(-1) //
+						.setActivePokemonId(activePokemon) //
 						.setType(action.getType());
 				if (action.isHasDamageWindow()) {
 					long damageWindowsStart = start + action.getDamageWindowStart();
