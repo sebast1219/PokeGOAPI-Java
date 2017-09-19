@@ -1131,6 +1131,8 @@ public class Battle {
 		 *            the current API
 		 * @param battle
 		 *            the current battle
+		 * @param oldAttacker
+		 *            the previous attacker pokemon (null if none)
 		 * @param newAttacker
 		 *            the new attacker pokemon
 		 */
@@ -1143,10 +1145,12 @@ public class Battle {
 		 *            the current API
 		 * @param battle
 		 *            the current battle
+		 * @param oldDefender
+		 *            the previous defender pokemon (null if none)
 		 * @param newDefender
 		 *            the new defender pokemon
 		 */
-		void onDefenderSwap(PokemonGo api, Battle battle, BattlePokemon newAttacker, BattlePokemon newDefender);
+		void onDefenderSwap(PokemonGo api, Battle battle, BattlePokemon oldDefender, BattlePokemon newDefender);
 
 		/**
 		 * Called when the given Pokemon faints.
